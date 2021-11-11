@@ -51,7 +51,6 @@ const tokenize = (source: string) => {
 interface INode {
     type: string;
     expression?: string[];
-    head?: Token[];
     body?: INode[];
 }
 
