@@ -68,18 +68,18 @@ class Parser {
     }
 
     parseFunction() {
-        let name: string = "";
+        let identifier: string = "";
         while (this.getToken()?.string !== "(") {
-            name += this.getToken()!.string;
+            identifier += this.getToken()!.string;
             this.eat();
         }
-        name = name.trim();
+        identifier = identifier.trim();
         while (this.getToken()?.string !== "{") {
             this.eat();
         }
         this.eat(); // eat {
         const nodes = this.parseNode();
-        return { type: "FunctionStatement", name, body: nodes };
+        return { type: "FunctionStatement", identifier, body: nodes };
     }
 
     parseExpression() {
