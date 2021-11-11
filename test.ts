@@ -287,6 +287,7 @@ const interprete = (env: { [x: string]: any } = {}, root: INode[]): any => {
             }
             case "ReturnStatement": {
                 last = evaluate(scopedEnv, node.expression!);
+                break;
             }
         }
     }
