@@ -2,7 +2,10 @@ const source = `function test() {
     let a = 1;
     let b = 2;
     return a + b;
-}`;
+}
+
+test();
+`;
 
 type Token = { token: string; string: string };
 
@@ -48,9 +51,16 @@ const tokenize = (source: string) => {
     return tokens;
 };
 
+interface IExpression {
+    type: string;
+    callee?: string;
+    notation?: Token[];
+}
+
 interface INode {
     type: string;
-    expression?: string[];
+    identifier?: string;
+    expression?: IExpression;
     body?: INode[];
 }
 
@@ -82,29 +92,48 @@ class Parser {
     }
 
     parseExpression() {
-        const reverseNotation: string[] = [];
+        const reverseNotation: Token[] = [];
         let firstLeft: string | undefined;
-        let op: string | undefined;
+        let op: Token | undefined;
         while (this.getToken()) {
             switch (this.getToken()?.token) {
                 case "PUNCTUATOR": {
                     const t = this.getToken();
-                    op = t!.string;
+                    op = t!;
                     this.eat();
                     break;
                 }
                 case "SEMI":
                 case "LINE_BREAK": {
                     this.eat();
-                    return reverseNotation;
+                    return {
+                        type: "BinaryExpression",
+                        notation: reverseNotation,
+                    };
+                }
+                case "PAREN": {
+                    if (firstLeft && !op) {
+                        if (this.getToken()?.string === "(") {
+                            while (this.getToken()?.string !== ")") {
+                                // TODO: parse parameter
+                                this.eat();
+                            }
+                            this.eat();
+                            return {
+                                type: "CallExpression",
+                                callee: firstLeft,
+                            };
+                        }
+                    }
+                    break;
                 }
                 case "NUMBER":
                 case "WORD": {
                     if (!firstLeft) {
                         firstLeft = this.getToken()!.string;
-                        reverseNotation.push(firstLeft);
+                        reverseNotation.push(this.getToken()!);
                     } else {
-                        const right = this.getToken()!.string;
+                        const right = this.getToken()!;
                         if (!op) {
                             //error
                         } else {
@@ -120,7 +149,7 @@ class Parser {
                     break;
             }
         }
-        return reverseNotation;
+        return { type: "BinaryExpression", notation: reverseNotation };
     }
 
     parseAssignStatement() {
@@ -153,7 +182,7 @@ class Parser {
                 case "RETURN_KEYWORD": {
                     this.eat();
                     const exp = this.parseExpression();
-                    nodes.push({ type: "ReturnExpression", expression: exp });
+                    nodes.push({ type: "ReturnStatement", expression: exp });
                     break;
                 }
                 case "LET_KEYWORD": {
@@ -162,10 +191,18 @@ class Parser {
                     break;
                 }
                 case "BRACE": {
-                    this.eat();
                     if (this.getToken()?.string === "}") {
+                        this.eat();
                         return nodes;
+                    } else {
+                        this.eat();
                     }
+                    break;
+                }
+                case "WORD": {
+                    const expression = this.parseExpression();
+                    nodes.push({ type: "ExpressionStatement", expression });
+                    break;
                 }
                 default: {
                     this.eat();
@@ -177,5 +214,87 @@ class Parser {
     }
 }
 
+const evaluate = (env: { [x: string]: any }, expression: IExpression) => {
+    const scopedEnv = Object.assign({}, env);
+
+    const getValueFromToken = (token: Token) => {
+        switch (token.token) {
+            case "WORD": {
+                return scopedEnv[token.string];
+            }
+            case "NUMBER": {
+                return Number(token.string);
+            }
+            default:
+                return null;
+        }
+    };
+
+    switch (expression.type) {
+        case "CallExpression": {
+            const functionStatement = scopedEnv[expression.callee!] as INode;
+            return interprete(scopedEnv, functionStatement.body ?? []);
+        }
+        case "BinaryExpression": {
+            if (expression.notation?.length === 1)
+                return getValueFromToken(expression.notation[0]);
+            else {
+                const stack: Token[] = [];
+                while (expression.notation?.length) {
+                    const first = expression.notation.shift();
+                    if (first?.string === "+") {
+                        const [left, right] = [stack.pop(), stack.pop()];
+                        const leftValue = getValueFromToken(left!);
+                        const rightValue = getValueFromToken(right!);
+                        stack.push({
+                            token: "NUMBER",
+                            string: (leftValue + rightValue).toString(),
+                        });
+                    } else if (
+                        first?.token === "WORD" ||
+                        first?.token === "NUMBER"
+                    ) {
+                        stack.push(first);
+                    }
+                }
+                return getValueFromToken(stack[0]);
+            }
+        }
+    }
+};
+
+const interprete = (env: { [x: string]: any } = {}, root: INode[]): any => {
+    const scopedEnv = Object.assign({}, env);
+    let last = undefined;
+    for (let node of root) {
+        switch (node.type) {
+            case "FunctionStatement": {
+                if (node.identifier) {
+                    scopedEnv[node.identifier] = node;
+                }
+                break;
+            }
+            case "ExpressionStatement": {
+                last = evaluate(scopedEnv, node.expression!);
+                break;
+            }
+            case "AssignStatement": {
+                scopedEnv[node.identifier!] = evaluate(
+                    scopedEnv,
+                    node.expression!
+                );
+                break;
+            }
+            case "ReturnStatement": {
+                last = evaluate(scopedEnv, node.expression!);
+            }
+        }
+    }
+    return last;
+};
+
 const parser = new Parser(tokenize(source));
-console.log(JSON.stringify(parser.parseNode(), null, 4));
+const ast = parser.parseNode();
+// console.log(ast);
+const value = interprete({}, ast);
+console.log(value);
