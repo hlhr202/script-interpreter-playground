@@ -295,6 +295,5 @@ const interprete = (env: { [x: string]: any } = {}, root: INode[]): any => {
 
 const parser = new Parser(tokenize(source));
 const ast = parser.parseNode();
-// console.log(ast);
 const value = interprete({}, ast);
 console.log(value);
